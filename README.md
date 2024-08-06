@@ -3,7 +3,7 @@
 This repository contains the Profisee Connectors.
 
 ## Importing a Connector into Profisee
-1. Find the connector you want to import (e.g. [Melissa Data Personator](Melissa Data Personator\Personator Consumer_v3.json))
+1. Find the connector you want to import (e.g. [Melissa Data Personator](Melissa%20Data%20Personator/Personator%20Consumer_v3.json))
 2. Click the "download raw file" button
 
    ![alt text](assets/download.png)
