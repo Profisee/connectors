@@ -14,3 +14,6 @@ This repository contains the Profisee Connectors.
    
    ![alt text](assets/import.png)
 7. Select the file that you downloaded and click "Open"
+
+## License
+This project is licensed under the [MIT license](LICENSE.TXT).
