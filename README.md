@@ -15,5 +15,8 @@ This repository contains the Profisee Connectors.
    ![alt text](assets/import.png)
 7. Select the file that you downloaded and click "Open"
 
+## Connector Architecture Documentation
+For a guide on how to create your own Connector, see [Service Provider Documentation](https://github.com/Profisee/connectors/blob/Service-Provider-Docs/Service%20Provider%20Documentation/Service%20Provider%20Documentation.md)
+
 ## License
 This project is licensed under the [MIT license](LICENSE.TXT).
