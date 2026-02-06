@@ -1,0 +1,186 @@
+{
+  "artifactVersion": "1.5.1.0",
+  "scripts": [
+    {
+      "Configuration": {
+        "scriptContent": "import { fetch, getOAuthToken } from \"Profisee\";\r\nconst retryErrorCodes =\r\n    [\r\n        408, \/\/ Request Timeout  \r\n        429, \/\/ Too Many Requests  \r\n        500, \/\/ Internal Server Error  \r\n        502, \/\/ Bad Gateway  \r\n        503, \/\/ Service Unavailable  \r\n        504, \/\/ Gateway Timeout\r\n    ];\r\n\r\nexport function execute(input) {\r\n    \/\/ write your code here\r\n}"
+      },
+      "Id": "1a2b3c4d-0123-4567-89ab-1234567890ab",
+      "Code": "1a2b3c4d-0123-4567-89ab-1234567890ab",
+      "Name": "Test Script"
+    }
+  ],
+  "serviceProviderRecord": {
+    "Configuration": {
+      "workerQueueOptions": {
+        "workerCount": 2,
+        "priorityQueueThreshold": { "maxJobCount": 1, "maxRecordCount": 5000 }
+      },
+      "authSettings": {
+        "Type": "OAuth2",
+        "OAuthUrl": "https://oauthUrl.com/v1/token"
+      }, 
+      "services": {
+        "Service1": {
+          "name": "Test Script Service",
+          "description": "A test Script service",
+          "inputs": {
+            "ServiceConfigurationInputs": {
+              "scope": "Service",
+              "friendlyName": "Service Configuration Inputs",
+              "presenterConfiguration": {
+                "type": "ParameterSet",
+                "settings": {
+                  "Parameters": {
+                    "SCInput1": "SCStringInput1",
+                    "SCInput2": "SCNumberInput2",
+                    "SCInput3": "SCReadOnlyInput3"
+                  }
+                }
+              }
+            },
+            "ServiceConfigurationCredentialInput": {
+              "scope": "Service",
+              "friendlyName": "Service Configuration Credential Input",
+              "presenterConfiguration": {
+                "type": "ParameterSet",
+                "settings": {
+                  "Parameters": {
+                    "SCInput4": "input4"
+                  }
+                }
+              }
+            },
+            "SCStringInput1": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Service Configuration input",
+              "presenterConfiguration": {
+                "type": "String"
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            },
+            "SCNumberInput2": {
+              "type": "Float",
+              "scope": "Service",
+              "friendlyName": "Service Configuration input required",
+              "presenterConfiguration": {
+                "type": "Number"
+              },
+              "defaultValue": {
+                "name": "SCNumberInput2",
+                "assignmentType": "Literal",
+                "dataType": "Float",
+                "value": 34
+              },
+              "isRequired": true,
+              "isReadOnly": false
+            },
+            "SCReadOnlyInput3": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Service configuration input readonly",
+              "presenterConfiguration": {
+                "type": "String"
+              },
+              "defaultValue": {
+                "name": "SCNumberInput3",
+                "dataType": "string",
+                "assignmentType": "Literal",
+                "value": "Your default value"
+              },
+              "isRequired": false,
+              "isReadOnly": true
+            },
+            "input1": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Checkbox editor example",
+              "presenterConfiguration": {
+                "type": "Boolean",
+                "settings": {}
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            },
+            "input2": {
+              "type": "Float",
+              "scope": "Data",
+              "friendlyName": "Numeric editor example",
+              "presenterConfiguration": {
+                "type": "Number",
+                "settings": { 
+                  "DecimalPlaces":3,
+                  "MinimumValue":10,
+                  "MaximumValue":20.500
+                }
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            },
+            "input3": {
+              "type": "Date",
+              "scope": "Data",
+              "friendlyName": "Date editor example",
+              "presenterConfiguration": {
+                "type": "DateTime",
+                "settings": {
+                  "Controls": "Date"
+                }
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            },
+            "input4": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Credential input example",
+              "presenterConfiguration": {
+                "type": "Credential",
+                "settings": {}
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            },
+            "input5": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Required field example",
+              "presenterConfiguration": {
+                "type": "Expression",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false
+            },
+            "input6": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Input",
+              "presenterConfiguration": {
+                "type": "Expression",
+                "settings": {}
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            }
+          },
+          "outputs": {
+            "Output1": { "name": "Output 1", "type": "String" },
+            "Output2": { "name": "Output 2", "type": "Float" },
+            "Output3": { "name": "Output 3", "type": "Date" },
+            "Output4": { "name": "Output 4", "type": "Integer" },
+            "Output5": { "name": "Output 5", "type": "Boolean" }
+          },
+          "scriptId": "1a2b3c4d-0123-4567-89ab-1234567890ab",
+          "maximumRecordsPerRequest": 1
+        }
+      }
+    },
+    "Id": "12345678-abcd-1234-5678-a1b2c3d45678",
+    "Code": "12345678-abcd-1234-5678-a1b2c3d45678",
+    "Name": "Script Provider Example",
+    "Type": "Script"
+  }
+}
