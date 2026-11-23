@@ -1,0 +1,101 @@
+{
+  "artifactVersion": "1.8.1.0",
+  "scripts": [
+    {
+      "Configuration": {
+        "scriptContent": "import { fetch } from \"Profisee\";\r\n\r\n// Export example: sends Profisee records to a REST endpoint as a JSON POST.\r\n// The default endpoint, https://httpbin.org/post, echoes the request back and stores nothing,\r\n// so the example runs as-is. Point Endpoint URL at your own API to use it for real.\r\n// Export scripts return only a status. Any records returned are ignored.\r\nconst retryErrorCodes = [408, 429, 500, 502, 503, 504];\r\n\r\nexport function execute(input) {\r\n  var records = input.records || [];\r\n  if (records.length === 0) {\r\n    return { isSuccess: true };\r\n  }\r\n\r\n  var payload = [];\r\n  for (var i = 0; i < records.length; i++) {\r\n    var record = records[i];\r\n    payload.push({\r\n      code: record.Code,\r\n      name: record.Name,\r\n      email: record.Email || null\r\n    });\r\n  }\r\n\r\n  var response = fetch(input.EndpointUrl, {\r\n    method: \"POST\",\r\n    headers: {\r\n      \"Content-Type\": \"application/json\",\r\n      \"Accept\": \"application/json\"\r\n    },\r\n    body: JSON.stringify({ records: payload })\r\n  });\r\n\r\n  if (response.exceptionType) {\r\n    return {\r\n      isSuccess: false,\r\n      error: response.error || \"Network error\",\r\n      shouldRetry: response.shouldRetry || false\r\n    };\r\n  }\r\n\r\n  if (!response.ok) {\r\n    return {\r\n      isSuccess: false,\r\n      error: \"HTTP \" + response.status + \": \" + response.body,\r\n      shouldRetry: retryErrorCodes.indexOf(response.status) >= 0\r\n    };\r\n  }\r\n\r\n  return { isSuccess: true };\r\n}\r\n"
+      },
+      "Id": "74d4cbd6-f23d-409f-9031-9b02e656e75e",
+      "Code": "74d4cbd6-f23d-409f-9031-9b02e656e75e",
+      "Name": "REST Export Script"
+    }
+  ],
+  "serviceProviderRecord": {
+    "Configuration": {
+      "workerQueueOptions": {
+        "workerCount": 2,
+        "priorityQueueThreshold": {
+          "maxJobCount": 1,
+          "maxRecordCount": 5000
+        }
+      },
+      "services": {
+        "RestExport": {
+          "name": "REST Export",
+          "description": "Posts Profisee records as JSON to a REST endpoint (defaults to the https://httpbin.org/post echo service)",
+          "integrationFlow": "Export",
+          "inputs": {
+            "Settings": {
+              "scope": "Service",
+              "friendlyName": "Settings",
+              "presenterConfiguration": {
+                "type": "ParameterSet",
+                "settings": {
+                  "Parameters": {
+                    "EndpointUrl": "EndpointUrl"
+                  }
+                }
+              }
+            },
+            "EndpointUrl": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Endpoint URL",
+              "presenterConfiguration": {
+                "type": "String",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false,
+              "defaultValue": {
+                "name": "EndpointUrl",
+                "dataType": "String",
+                "assignmentType": "Literal",
+                "value": "https://httpbin.org/post"
+              }
+            },
+            "Code": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Code",
+              "presenterConfiguration": {
+                "type": "Expression",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false
+            },
+            "Name": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Name",
+              "presenterConfiguration": {
+                "type": "Expression",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false
+            },
+            "Email": {
+              "type": "String",
+              "scope": "Data",
+              "friendlyName": "Email",
+              "presenterConfiguration": {
+                "type": "Expression",
+                "settings": {}
+              },
+              "isRequired": false,
+              "isReadOnly": false
+            }
+          },
+          "maximumRecordsPerRequest": 100,
+          "scriptId": "74d4cbd6-f23d-409f-9031-9b02e656e75e"
+        }
+      }
+    },
+    "Id": "30324a3c-6e3b-426e-987d-423b756169b3",
+    "Code": "30324a3c-6e3b-426e-987d-423b756169b3",
+    "Name": "Script Export Example",
+    "Type": "Script"
+  }
+}

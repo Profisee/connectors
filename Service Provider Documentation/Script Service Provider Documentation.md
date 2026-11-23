@@ -7,7 +7,13 @@
   - [1.1 Script Record](#11-script-record)
     - [1.1.1 Script Configuration](#111-script-configuration)
       - [Script Input](#script-input)
+      - [Reserved Property Names](#reserved-property-names)
       - [Script Output](#script-output)
+    - [1.1.2 Integration Flows](#112-integration-flows)
+      - [Enrichment](#enrichment)
+      - [Import](#import)
+      - [Export](#export)
+    - [1.1.3 Paginated Import and the paginate Function](#113-paginated-import-and-the-paginate-function)
   - [1.2 Service Provider Record](#12-service-provider-record)
     - [1.2.1 Worker Queue Options](#121-worker-queue-options)
       - [Priority Queue Threshold](#priority-queue-threshold)
@@ -23,6 +29,7 @@
           - [ParameterSet Type](#parameterset-type)
       - [Service Outputs](#service-outputs)
 - [2. Enums](#2-enums)
+  - [IntegrationFlow](#integrationflow)
   - [InputScope](#inputscope)
   - [InputType](#inputtype)
   - [PresenterType](#presentertype)
@@ -40,6 +47,7 @@
       - [Fetch Function Signature](#fetch-function-signature)
       - [Response Handling Patterns](#response-handling-patterns)
       - [Important Notes](#important-notes)
+  - [3.3 Example Providers](#33-example-providers)
 
 # 1. Script Service Provider Artifact 
 
@@ -49,14 +57,14 @@ The artifact can be imported and exported from the Connect admin area in the Pro
 
 | Name       | Type       | Description          |
 |------------|------------|----------------------|
-| ArtifactVersion | `string` | The version of the artifact. Example: `1.5.1.0` |
+| ArtifactVersion | `string` | The version of the artifact. Use `1.8.1.0` or later for providers that set [`integrationFlow`](#123-services). When an artifact older than `1.8.1.0` is imported, any service without an `integrationFlow` is treated as `Enrichment`. An artifact at `1.8.1.0` or later must set `integrationFlow` on every Script service, or it fails validation when imported. |
 | Scripts | List<[Script](#11-script-record)> | A list of script records containing JavaScript code to be executed. Each script must be referenced by at least one service in the service provider record. |
 | ServiceProviderRecord | [ServiceProviderRecord](#12-service-provider-record) | Defining service inputs and outputs |
 
 ## 1.1 Script Record 
 <a href="#top">[top]</a>
 
-A script record contains JavaScript code executed by Connect. Each script must export an `execute` function that receives input parameters defined in the service configuration.
+A script record contains JavaScript code executed by Connect. Each script must export an `execute` function that receives input parameters defined in the service configuration. A script used by a paginated Import service must also export a `paginate` function. See [1.1.3 Paginated Import and the paginate Function](#113-paginated-import-and-the-paginate-function).
 
 The `Name` is used throughout the administration experience to reference the script. Each script must be referenced by its `Id` in at least one service's `scriptId` field.
 
@@ -91,22 +99,23 @@ export function execute(input) {
 
 #### Script Input 
 
-The `input` parameter passed to the JavaScript `execute` function contains all the data needed for script execution. The input structure is automatically constructed based on the [Service Inputs](#service-inputs) configuration and consists of three main components:
+The `input` parameter passed to the JavaScript `execute` function contains all the data needed for script execution. The input structure is automatically constructed based on the [Service Inputs](#service-inputs) configuration. Which of these properties are present depends on the service's [integration flow](#112-integration-flows):
 
 | Name       | Type       | Description          |
 |------------|------------|----------------------|
-| `AuthSettings` | `object` | An object containing authentication settings that are configured in the [AuthSettings Configuration](#122-authsettings). In the script, users can access the settings by `input.authSettings`, then use these settings to retrieve a token by using `getOAuthToken`. See [AuthSettings and getOAuthToken Usage](#321-authsettings-and-getoauthtoken-usage) for more information. |
-| Service Scope Inputs | `any` | All inputs defined with `Service` scope in the service configuration are included as top-level properties in the input object. These inputs are evaluated once per operation and are available to all records processed in the batch. Each service scope input is accessible by its input key name. |
-| `Records` | `array` | An array of record objects, where each object contains the values from inputs defined with `Data` scope. Each record in the array represents one data record being processed, and the properties within each record object correspond to the Data scope input keys defined in the service configuration. |
+| `authSettings` | `object` | An object containing authentication settings that are configured in the [AuthSettings Configuration](#122-authsettings). In the script, users can access the settings by `input.authSettings`, then use these settings to retrieve a token by using `getOAuthToken`. See [AuthSettings and getOAuthToken Usage](#321-authsettings-and-getoauthtoken-usage) for more information. Present in every flow when the provider's `authSettings` type is `OAuth2`. |
+| Service Scope Inputs | `any` | All inputs defined with `Service` scope in the service configuration are included as top-level properties in the input object. These inputs are evaluated once per operation and are available to all records processed in the batch. Each service scope input is accessible by its input key name. Present in every flow. |
+| `records` | `array` | An array of record objects, where each object contains the values from inputs defined with `Data` scope. Each record in the array represents one data record being processed, and the properties within each record object correspond to the Data scope input keys defined in the service configuration. For `Enrichment` and `Export` this holds the records being processed. For `Import` it is always an empty array, because the data comes from the script. |
+| `paging` | `object` | Only for `Import` services with `isPaging: true`. Tells `execute` which page to fetch: `{ "pageNumber": 1, "pageSize": 100 }`. `pageNumber` starts at 1. See [1.1.3 Paginated Import and the paginate Function](#113-paginated-import-and-the-paginate-function). |
 
-Example input structure:
+Example input structure (Enrichment):
 
 ``` json
 "input": {
-  "AuthSettings": {},
+  "authSettings": {},
   "SCStringInput1": "hello",
   "SCNumberInput2": 34,
-  "Records": [
+  "records": [
     {
       "input1": "CompanyXXX",
       "input2": 13.4,
@@ -121,7 +130,18 @@ Example input structure:
 }
 ```
 
-In this example, `SCStringInput1` and `SCNumberInput2` are Service scope inputs, while `input1`, `input2`, and `input3` are Data scope inputs that appear within each record in the `Records` array.
+In this example, `SCStringInput1` and `SCNumberInput2` are Service scope inputs, while `input1`, `input2`, and `input3` are Data scope inputs that appear within each record in the `records` array.
+
+#### Reserved Property Names
+
+Service scope inputs are written to the top level of the `input` object, next to the properties Connect adds itself. To keep them from colliding, the following names cannot be used as the key of a `Service` scope input:
+
+- `authSettings`
+- `records`
+- `paging`
+- `pageSize`
+
+The check ignores case, so `Records` and `PAGESIZE` are rejected too. A provider that uses one of these names fails validation when it is imported. `Data` scope inputs are not affected, because they live inside each record rather than at the top level.
 
 #### Script Output 
 
@@ -131,19 +151,19 @@ The output object can include the following properties:
 
 | Name       | Type       | Description          |
 |------------|------------|----------------------|
-| `IsSuccess` | `boolean` (optional) | A boolean value indicating whether the script execution was successful. If this property is not returned, it defaults to `true`. Set this to `false` to indicate that the operation failed. |
-| `ShouldRetry` | `boolean` (optional) | A boolean value indicating whether the script execution should be retried. If this property is not defined, it defaults to `false`. Set this to `true` when the script encounters a transient error that may succeed on retry. |
-| `Error` | `string` (optional) | A string value containing any error message or description of issues encountered during script execution. This is typically used in conjunction with `IsSuccess: false` to provide diagnostic information. |
-| `Records` | `array` | An array of record objects containing the processed data to be mapped back to entity records. Each object in the array should contain properties that correspond to the output keys defined in the service's outputs dictionary. The mapping of these output properties back to entity fields is configured in the Integration Strategy response mappings. |
+| `isSuccess` | `boolean` (optional) | A boolean value indicating whether the script execution was successful. If this property is not returned, it defaults to `true`. Set this to `false` to indicate that the operation failed. |
+| `shouldRetry` | `boolean` (optional) | A boolean value indicating whether the script execution should be retried. If this property is not defined, it defaults to `false`. Set this to `true` when the script encounters a transient error that may succeed on retry. |
+| `error` | `string` (optional) | A string value containing any error message or description of issues encountered during script execution. This is typically used in conjunction with `isSuccess: false` to provide diagnostic information. Returning a non-empty `error` fails the request even if `isSuccess` is `true`. |
+| `records` | `array` | An array of record objects containing the processed data to be mapped back to entity records. Each object in the array should contain properties that correspond to the output keys defined in the service's outputs dictionary. The mapping of these output properties back to entity fields is configured in the Integration Strategy response mappings. Required for `Enrichment` and `Import`. Not used for `Export`. |
 
 Example output structure:
 
 ``` json
 {
-  "IsSuccess": true,
-  "ShouldRetry": false,
-  "Error": "",
-  "Records": [
+  "isSuccess": true,
+  "shouldRetry": false,
+  "error": "",
+  "records": [
     { 
       "Output1": "AddressXXX", 
       "Output2": 32.4,
@@ -161,6 +181,200 @@ Example output structure:
 ```
 
 In this example, `Output1`, `Output2`, `Output3`, and `Output5` correspond to output keys defined in the service's outputs dictionary. The values in each record object will be mapped back to entity records according to the Integration Strategy response mapping configuration.
+
+### 1.1.2 Integration Flows
+<a href="#top">[top]</a>
+
+Every service declares which way data moves through its script with the [`integrationFlow`](#integrationflow) property. The flow decides what Connect passes into `execute`, what it expects back, and whether the service needs `inputs` or `outputs` at all.
+
+| Flow | Data direction | `records` passed in | What `execute` returns | Needs `inputs` | Needs `outputs` |
+|------|----------------|---------------------|------------------------|----------------|-----------------|
+| `Enrichment` | Profisee → external service → Profisee | The records being enriched | Status and one record per enriched record | Yes | Yes |
+| `Import` | External source → Profisee | Always an empty array | Status and the records to import | No. Service scope inputs are still passed to the script; Data scope inputs are not used | Yes |
+| `Export` | Profisee → external target | The records being exported | Status only | Yes | No |
+
+#### Enrichment
+
+Enrichment is the original Script flow and works exactly as described in [Script Input](#script-input) and [Script Output](#script-output). Its strategies have both a **Request** and a **Response** tab. Connect reads records from the entity, evaluates the Request mappings into the `Data` scope inputs, and sends up to `maximumRecordsPerRequest` of them in `records`. The script calls the external service and returns one output record per input record, which the response mappings write back to the entity.
+
+``` javascript
+import { fetch } from "Profisee";
+
+export function execute(input) {
+  var results = [];
+  for (var i = 0; i < input.records.length; i++) {
+    var record = input.records[i];
+    // call the external service with record's Data scope inputs, then map its response
+    results.push({ Output1: "..." });
+  }
+  return { isSuccess: true, records: results };
+}
+```
+
+#### Import
+
+An Import script brings records into Profisee from an external source. Connect does not read any records from the entity, so `records` is always an empty array and the service does not need any `Data` scope inputs. `Service` scope inputs are still passed and are the usual way to let users configure the source (a URL, a filter, a resource name). An Import service can omit `inputs` entirely.
+
+The script fetches the data and returns it in `records`. Each record's keys must match the keys in the service's `outputs`. An Import strategy has a single **Import Map** tab, where the outputs are mapped to entity attributes. Unless the entity generates its own codes, one of the outputs must be mapped to `Code`. Records that come back without a code are skipped, reported in Monitor, and the job is marked `Failed`, while the rest of the records are still imported.
+
+``` javascript
+import { fetch } from "Profisee";
+
+export function execute(input) {
+  // input.records is always [] for Import
+  var response = fetch("https://api.example.com/items", { method: "GET" });
+  if (!response.ok) {
+    return { isSuccess: false, error: "HTTP " + response.status, shouldRetry: false };
+  }
+
+  var items = JSON.parse(response.body);
+  var records = [];
+  for (var i = 0; i < items.length; i++) {
+    records.push({ Code: items[i].id != null ? String(items[i].id) : null, Name: items[i].name });
+  }
+  return { isSuccess: true, records: records };
+}
+```
+
+Import response example:
+
+``` json
+{
+  "isSuccess": true,
+  "records": [
+    { "Code": "ITEM-1", "Name": "First item" },
+    { "Code": "ITEM-2", "Name": "Second item" }
+  ]
+}
+```
+
+By default an Import run is a single job that calls `execute` once (`isPaging: false`) and imports every record that call returns, so the `maximumRecordsPerRequest` property is not needed. A very large response can run into the script engine's memory limit, so for sources that are too large for one call, see [1.1.3 Paginated Import and the paginate Function](#113-paginated-import-and-the-paginate-function).
+
+#### Export
+
+An Export script sends Profisee records to an external target. Connect reads records from the entity and evaluates the mappings on the strategy's single **Export Map** tab into the `Data` scope inputs. It then sends the records in `records`, split into jobs of at most `maximumRecordsPerRequest`. If the strategy's Maximum Records Per Job run option is set lower, that smaller value is used.
+
+The script only reports whether the request worked. It returns `isSuccess`, and `error` and `shouldRetry` when it fails. Nothing is written back to Profisee, so an Export service does not need `outputs`, and any `records` the script returns are ignored.
+
+``` javascript
+import { fetch } from "Profisee";
+
+export function execute(input) {
+  var response = fetch(input.EndpointUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ records: input.records })
+  });
+
+  if (!response.ok) {
+    return {
+      isSuccess: false,
+      error: "HTTP " + response.status + ": " + response.body,
+      shouldRetry: [408, 429, 500, 502, 503, 504].indexOf(response.status) >= 0
+    };
+  }
+  return { isSuccess: true };
+}
+```
+
+Export response example:
+
+``` json
+{
+  "isSuccess": false,
+  "shouldRetry": true,
+  "error": "HTTP 503: Service Unavailable"
+}
+```
+
+A failed response fails the whole request, meaning every record in that `records` array. If the target can accept some records and refuse others, decide whether that counts as success for your integration and return `isSuccess` accordingly.
+
+### 1.1.3 Paginated Import and the paginate Function
+<a href="#top">[top]</a>
+
+Pagination is optional and only applies to `Import` services. Use it when the source holds more records than one call should return. Connect then splits the run into one job per page and calls `execute` once per page.
+
+To turn it on, set `isPaging: true` on the service and export a `paginate` function from the script alongside `execute`. A provider with `isPaging: true` whose script has no `paginate` function is rejected when it is imported. With `isPaging: false`, `paginate` is never called, even if the script exports one.
+
+**How a paginated run works:**
+
+1. Connect works out the page size: the service's `maximumRecordsPerRequest`, or the strategy's Maximum Records Per Job if that is set and smaller.
+2. Connect calls `paginate` once, passing the page size.
+3. `paginate` returns `totalRecords`, the number of records the source holds.
+4. Connect creates `ceil(totalRecords / pageSize)` jobs. Monitor shows `totalRecords` as the run's record count.
+5. Each job calls `execute` with `input.paging` set to its page. `execute` fetches that page and returns its records as described under [Import](#import).
+
+If `totalRecords` is `0`, no jobs are created and the run succeeds. If `paginate` fails, or returns a `totalRecords` that is missing, negative, not a whole number, or not a number, no jobs are created and the run fails with a descriptive error. `paginate` is not retried. Any `shouldRetry` it returns is ignored, so start the run again once the source is available.
+
+Each page job runs independently, and jobs can run in parallel. If some pages fail, the records from the pages that succeeded are kept, the failed jobs are marked `Failed`, and the run is marked `Failed`, the same as a database import. Each job receives `authSettings`, so call `getOAuthToken` in `execute` as usual.
+
+The Maximum Records Per Job run option only appears on Import strategies whose service has `isPaging: true`. An Import without paging always runs as a single job.
+
+**Signature:**
+
+``` javascript
+export function paginate(input) { ... }
+```
+
+**paginate input:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `authSettings` | `object` | Same as for `execute`, when the provider's `authSettings` type is `OAuth2`. |
+| Service Scope Inputs | `any` | Same as for `execute`. |
+| `pageSize` | `int` | The page size Connect will use for this run. Useful when the source API counts in pages rather than records. |
+
+`paginate` does not receive `records` or `paging`.
+
+**paginate output:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `totalRecords` | `int` | Required. The total number of records to import. Must be a whole number of 0 or more. |
+| `isSuccess` | `boolean` (optional) | Set to `false` to fail the run. Defaults to `true`. |
+| `error` | `string` (optional) | The error message shown in Monitor when the run fails. A non-empty `error` fails the run. |
+
+**paging input to execute:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `paging.pageNumber` | `int` | The page this job should fetch. Starts at `1`. |
+| `paging.pageSize` | `int` | The number of records per page. The same value `paginate` received as `pageSize`. |
+
+For an offset-based API, the first record of a page is at offset `(pageNumber - 1) * pageSize`. The last page may hold fewer than `pageSize` records.
+
+Example:
+
+``` javascript
+import { fetch } from "Profisee";
+
+export function paginate(input) {
+  // Ask for one item; the response's count is the total
+  var response = fetch("https://api.example.com/items?limit=1", { method: "GET" });
+  if (!response.ok) {
+    return { isSuccess: false, error: "HTTP " + response.status };
+  }
+  return { isSuccess: true, totalRecords: JSON.parse(response.body).count };
+}
+
+export function execute(input) {
+  var offset = (input.paging.pageNumber - 1) * input.paging.pageSize;
+  var response = fetch("https://api.example.com/items?limit=" + input.paging.pageSize + "&offset=" + offset, { method: "GET" });
+  if (!response.ok) {
+    return { isSuccess: false, error: "HTTP " + response.status, shouldRetry: false };
+  }
+
+  var items = JSON.parse(response.body).results;
+  var records = [];
+  for (var i = 0; i < items.length; i++) {
+    records.push({ Code: items[i].id != null ? String(items[i].id) : null, Name: items[i].name });
+  }
+  return { isSuccess: true, records: records };
+}
+```
+
+> [!NOTE]
+> `totalRecords` is a snapshot taken when the run starts. If records are added to the source during the run, the last page may pick some of them up if it has room, and the rest are picked up on the next run, the same as a database import. Pages are fetched by separate jobs that may not run in order, so if records are inserted or removed in the middle of the source during a run, page boundaries can shift. Sort the source by a stable key where the API allows it.
 
 
 ## 1.2 Service Provider Record 
@@ -238,9 +452,41 @@ The dictionary key is an identifier for the service and is not displayed in the 
 | name | `string` | The display name shown in the Profisee Portal. |
 | description | `string` | The description shown in the Profisee Portal. |
 | scriptId | `string` | The Id of the script record to execute. Must match the `Id` field of a [Script](#11-script-record) defined in the `Scripts` array. |
-| maximumRecordsPerRequest | `int` | The maximum number of records per request that the service supports. |
-| inputs | Dictionary<string, [Input](#service-inputs)> | A dictionary of input definitions. The key is the input name available in the script's `execute` function. |
-| outputs | Dictionary<string, [Output](#service-outputs)> | A dictionary of output definitions. The key is the output name returned from the script's `execute` function. |
+| integrationFlow | [IntegrationFlow](#integrationflow) | Required. The direction data moves through the service: `Enrichment`, `Import`, or `Export`. See [1.1.2 Integration Flows](#112-integration-flows). |
+| isPaging | `bool` | Required when `integrationFlow` is `Import`, ignored otherwise. When `true`, Connect calls the script's `paginate` function and runs one job per page. See [1.1.3 Paginated Import and the paginate Function](#113-paginated-import-and-the-paginate-function). |
+| maximumRecordsPerRequest | `int` | The maximum number of records per request that the service supports. Defaults to `1`. For `Enrichment` and `Export` it caps the size of the `records` array. For a paginated `Import` it is the page size. For `Export` and a paginated `Import`, it is also the upper limit (and the default) of the strategy's Maximum Records Per Job run option, which can lower it. It is not needed for an `Import` without paging. |
+| inputs | Dictionary<string, [Input](#service-inputs)> | A dictionary of input definitions. The key is the input name available in the script's `execute` function. Required for `Enrichment` and `Export`. Optional for `Import`. `Service` scope keys cannot use a [reserved property name](#reserved-property-names). |
+| outputs | Dictionary<string, [Output](#service-outputs)> | A dictionary of output definitions. The key is the output name returned from the script's `execute` function. Required for `Enrichment` and `Import`. Not used for `Export`. |
+
+Example service for each flow:
+
+``` json
+"services": {
+  "EnrichCompany": {
+    "name": "Company Enrichment",
+    "integrationFlow": "Enrichment",
+    "scriptId": "<SCRIPT-GUID>",
+    "maximumRecordsPerRequest": 1,
+    "inputs": { ... },
+    "outputs": { ... }
+  },
+  "ImportItems": {
+    "name": "Item Import",
+    "integrationFlow": "Import",
+    "isPaging": true,
+    "scriptId": "<SCRIPT-GUID>",
+    "maximumRecordsPerRequest": 100,
+    "outputs": { ... }
+  },
+  "ExportCustomers": {
+    "name": "Customer Export",
+    "integrationFlow": "Export",
+    "scriptId": "<SCRIPT-GUID>",
+    "maximumRecordsPerRequest": 100,
+    "inputs": { ... }
+  }
+}
+```
 
 #### Service Inputs 
 
@@ -381,6 +627,9 @@ Example:
 
 In this example, `SCStringInput1`, `SCNumberInput2`, and `SCReadOnlyInput3` are keys that reference inputs defined in the service's inputs dictionary. These inputs will show in the same section in the service configuration.
 
+> [!IMPORTANT]
+> Every `Service` scope input, other than the `ParameterSet` inputs themselves, must be listed in a `ParameterSet`. The service configuration only shows `Service` scope inputs that a `ParameterSet` lists, and the script only receives the values saved there. An input that no `ParameterSet` lists never appears in the web portal, so the script never receives it, even if it has a `defaultValue`. A `ParameterSet` that lists a single input is fine.
+
 
 #### Service Outputs 
 
@@ -408,6 +657,16 @@ The script's `execute` function must return an object with keys matching the out
 
 # 2. Enums 
 <a href="#top">[top]</a>
+
+## IntegrationFlow
+
+The direction data moves through a Script service. See [1.1.2 Integration Flows](#112-integration-flows).
+
+| Name       | Description          |
+|------------|----------------------|
+| Enrichment | Sends Profisee records to the script and writes the returned values back to the same records. |
+| Import     | Sends no records. The script fetches data from an external source and returns records to create or update in Profisee. Can be paginated with `isPaging` and a `paginate` function. |
+| Export     | Sends Profisee records to the script, which delivers them to an external target. The script returns only a status. |
 
 ## InputScope 
 
@@ -687,6 +946,8 @@ fetch(url, options)
 
 - **`ok`**: A boolean indicating whether the request was successful (status code 200-299)
 - **`status`**: The HTTP status code (e.g., 200, 404, 500)
+- **`statusText`**: The HTTP reason phrase (e.g., `"OK"`, `"Not Found"`)
+- **`headers`**: An object holding the response headers, one property per header. Multiple values for one header are joined with `, `. Header names keep the casing the server sent, so look them up without regard to case. Content headers such as `Content-Type`, `Content-Length`, and `Content-Range` are not included.
 - **`body`**: The response body as a string (ready to parse with `JSON.parse()` if JSON)
 - **`exceptionType`**: Present only when a network exception occurred (e.g., timeout, connection failure)
 - **`error`**: Error message (present when `exceptionType` exists or when request failed)
@@ -755,7 +1016,21 @@ const response = fetch("https://api.example.com/data", {
 
 - **Retry Logic**: The `shouldRetry` property can help implement retry logic for transient errors. Common retryable status codes include 408 (Request Timeout), 429 (Too Many Requests), and 5xx server errors.
 
-- **Headers**: Header names are case-sensitive. Common headers include `Authorization`, `Content-Type`, `Accept`, etc.
+- **Headers**: HTTP header names are not case-sensitive. Request headers can be written in any case. Response header names keep the casing the server sent, so look them up without regard to case. Common headers include `Authorization`, `Content-Type`, `Accept`, etc.
 
 - **No CORS Issues**: Since the fetch is executed server-side by Connect, there are no CORS (Cross-Origin Resource Sharing) restrictions.
+
+## 3.3 Example Providers
+<a href="#top">[top]</a>
+
+Complete provider artifacts you can import into Connect and use as a starting point are in [Example Service Providers/Script](../Example%20Service%20Providers/Script). The folder's [README](../Example%20Service%20Providers/Script/README.md) explains what each example's script does.
+
+| File | Flow | What it shows |
+|------|------|---------------|
+| [ScriptProvider_Example.json](../Example%20Service%20Providers/Script/ScriptProvider_Example.json) | `Enrichment` | Every input presenter type, Service and Data scope inputs, outputs, and `authSettings`. The script is an empty template. |
+| [ScriptProvider_Import_Example.json](../Example%20Service%20Providers/Script/ScriptProvider_Import_Example.json) | `Import` | A single-call import from a configurable REST endpoint that returns a JSON array. It defaults to `https://jsonplaceholder.typicode.com/users`, a public test API with placeholder data. One `Service` scope input, no authentication. |
+| [ScriptProvider_PaginatedImport_Example.json](../Example%20Service%20Providers/Script/ScriptProvider_PaginatedImport_Example.json) | `Import`| Imports every record from a configurable REST endpoint in pages of 100. It defaults to `https://jsonplaceholder.typicode.com/comments`, a public test API with placeholder data. The `paginate` function reads the total from the response's `X-Total-Count` header, and `execute` requests each page with the `_start` and `_limit` query parameters. |
+| [ScriptProvider_Export_Example.json](../Example%20Service%20Providers/Script/ScriptProvider_Export_Example.json) | `Export` | Posts records as JSON to a configurable endpoint. It defaults to `https://httpbin.org/post`, which echoes the request and stores nothing. |
+
+Both Import examples return `Code`, `Name`, and `Email` outputs. Map `Code` and `Name` to the entity's Code and Name attributes on the strategy's Import Map tab. The Export example has `Code`, `Name`, and `Email` Data scope inputs to map on the Export Map tab.
 

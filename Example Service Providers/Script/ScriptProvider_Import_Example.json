@@ -1,0 +1,82 @@
+{
+  "artifactVersion": "1.8.1.0",
+  "scripts": [
+    {
+      "Configuration": {
+        "scriptContent": "import { fetch } from \"Profisee\";\r\n\r\n// Import example: one GET call to a REST endpoint, no authentication.\r\n// The endpoint must return a JSON array of objects with id, name and email properties.\r\n// The default, https://jsonplaceholder.typicode.com/users, is a public test API with placeholder data.\r\n// Import scripts receive no source records. The script fetches data and returns it in records,\r\n// and each record's keys must match the output keys defined on the service.\r\nconst retryErrorCodes = [408, 429, 500, 502, 503, 504];\r\n\r\nexport function execute(input) {\r\n  var url = input.EndpointUrl;\r\n  if (!url) {\r\n    return { isSuccess: false, error: \"Endpoint URL is not set\", shouldRetry: false };\r\n  }\r\n\r\n  var response = fetch(url, {\r\n    method: \"GET\",\r\n    headers: { \"Accept\": \"application/json\" }\r\n  });\r\n\r\n  if (response.exceptionType) {\r\n    return {\r\n      isSuccess: false,\r\n      error: response.error || \"Network error\",\r\n      shouldRetry: response.shouldRetry || false\r\n    };\r\n  }\r\n\r\n  if (!response.ok) {\r\n    return {\r\n      isSuccess: false,\r\n      error: \"HTTP \" + response.status + \" from \" + url,\r\n      shouldRetry: retryErrorCodes.indexOf(response.status) >= 0\r\n    };\r\n  }\r\n\r\n  var items = null;\r\n  try {\r\n    items = JSON.parse(response.body);\r\n  } catch (e) {\r\n    return { isSuccess: false, error: \"Failed to parse response\", shouldRetry: false };\r\n  }\r\n\r\n  if (!Array.isArray(items)) {\r\n    return { isSuccess: false, error: \"Expected a JSON array from \" + url, shouldRetry: false };\r\n  }\r\n\r\n  var records = [];\r\n  for (var i = 0; i < items.length; i++) {\r\n    var item = items[i];\r\n    records.push({\r\n      Code: item.id != null ? String(item.id) : null,\r\n      Name: item.name || null,\r\n      Email: item.email || null\r\n    });\r\n  }\r\n\r\n  return { isSuccess: true, records: records };\r\n}\r\n"
+      },
+      "Id": "885313b7-bf88-451a-af11-679834554aec",
+      "Code": "885313b7-bf88-451a-af11-679834554aec",
+      "Name": "REST Import Script"
+    }
+  ],
+  "serviceProviderRecord": {
+    "Configuration": {
+      "workerQueueOptions": {
+        "workerCount": 2,
+        "priorityQueueThreshold": {
+          "maxJobCount": 1,
+          "maxRecordCount": 5000
+        }
+      },
+      "services": {
+        "RestImport": {
+          "name": "REST Import",
+          "description": "Imports records from a REST endpoint that returns a JSON array (defaults to the https://jsonplaceholder.typicode.com/users test API) in a single call",
+          "integrationFlow": "Import",
+          "isPaging": false,
+          "inputs": {
+            "Settings": {
+              "scope": "Service",
+              "friendlyName": "Settings",
+              "presenterConfiguration": {
+                "type": "ParameterSet",
+                "settings": {
+                  "Parameters": {
+                    "EndpointUrl": "EndpointUrl"
+                  }
+                }
+              }
+            },
+            "EndpointUrl": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Endpoint URL",
+              "presenterConfiguration": {
+                "type": "String",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false,
+              "defaultValue": {
+                "name": "EndpointUrl",
+                "dataType": "String",
+                "assignmentType": "Literal",
+                "value": "https://jsonplaceholder.typicode.com/users"
+              }
+            }
+          },
+          "outputs": {
+            "Code": {
+              "name": "Code",
+              "type": "String"
+            },
+            "Name": {
+              "name": "Name",
+              "type": "String"
+            },
+            "Email": {
+              "name": "Email",
+              "type": "String"
+            }
+          },
+          "scriptId": "885313b7-bf88-451a-af11-679834554aec"
+        }
+      }
+    },
+    "Id": "3ed50a7b-31d8-4704-9e51-2227383b36de",
+    "Code": "3ed50a7b-31d8-4704-9e51-2227383b36de",
+    "Name": "Script Import Example",
+    "Type": "Script"
+  }
+}

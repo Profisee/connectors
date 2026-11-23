@@ -1,5 +1,5 @@
 {
-  "artifactVersion": "1.5.1.0",
+  "artifactVersion": "1.8.1.0",
   "scripts": [
     {
       "Configuration": {
@@ -24,6 +24,7 @@
         "Service1": {
           "name": "Test Script Service",
           "description": "A test Script service",
+          "integrationFlow": "Enrichment",
           "inputs": {
             "ServiceConfigurationInputs": {
               "scope": "Service",

@@ -1,0 +1,83 @@
+{
+  "artifactVersion": "1.8.1.0",
+  "scripts": [
+    {
+      "Configuration": {
+        "scriptContent": "import { fetch } from \"Profisee\";\r\n\r\n// Paginated Import example: GET calls to a REST endpoint, no authentication.\r\n// The endpoint must accept _start (offset) and _limit (page size) query parameters, return a JSON array\r\n// of objects with id, name and email properties, and report the total record count in an X-Total-Count\r\n// response header. The default, https://jsonplaceholder.typicode.com/comments, is a public test API\r\n// with placeholder data. For another API, change pageUrl and getTotalCount to match how it pages.\r\n// Connect calls paginate once per run to learn how many records there are, splits them into pages,\r\n// then calls execute once per page with input.paging = { pageNumber, pageSize }. pageNumber starts at 1.\r\nconst retryErrorCodes = [408, 429, 500, 502, 503, 504];\r\n\r\nfunction get(url) {\r\n  var response = fetch(url, {\r\n    method: \"GET\",\r\n    headers: { \"Accept\": \"application/json\" }\r\n  });\r\n\r\n  if (response.exceptionType) {\r\n    return {\r\n      failure: {\r\n        isSuccess: false,\r\n        error: response.error || \"Network error\",\r\n        shouldRetry: response.shouldRetry || false\r\n      }\r\n    };\r\n  }\r\n\r\n  if (!response.ok) {\r\n    return {\r\n      failure: {\r\n        isSuccess: false,\r\n        error: \"HTTP \" + response.status + \" from \" + url,\r\n        shouldRetry: retryErrorCodes.indexOf(response.status) >= 0\r\n      }\r\n    };\r\n  }\r\n\r\n  return { response: response };\r\n}\r\n\r\n// Adds the paging parameters, whether or not the endpoint URL already has a query string.\r\nfunction pageUrl(input, start, limit) {\r\n  var url = input.EndpointUrl;\r\n  var separator = url.indexOf(\"?\") >= 0 ? \"&\" : \"?\";\r\n  return url + separator + \"_start=\" + start + \"&_limit=\" + limit;\r\n}\r\n\r\n// Header names are not case-sensitive, so look the header up without regard to case.\r\nfunction getTotalCount(response) {\r\n  var headers = response.headers || {};\r\n  for (var name in headers) {\r\n    if (name.toLowerCase() === \"x-total-count\") {\r\n      return Number(headers[name]);\r\n    }\r\n  }\r\n  return NaN;\r\n}\r\n\r\nfunction missingEndpoint(input) {\r\n  if (!input.EndpointUrl) {\r\n    return { isSuccess: false, error: \"Endpoint URL is not set\", shouldRetry: false };\r\n  }\r\n  return null;\r\n}\r\n\r\n// Called once per run. Returns the total number of records the source holds.\r\n// input.pageSize is the page size Connect will use for this run.\r\nexport function paginate(input) {\r\n  var invalid = missingEndpoint(input);\r\n  if (invalid) {\r\n    return invalid;\r\n  }\r\n\r\n  // Ask for a single record; the X-Total-Count header holds the count for the whole source.\r\n  var result = get(pageUrl(input, 0, 1));\r\n  if (result.failure) {\r\n    return result.failure;\r\n  }\r\n\r\n  var total = getTotalCount(result.response);\r\n  if (isNaN(total)) {\r\n    return { isSuccess: false, error: \"The response has no X-Total-Count header\", shouldRetry: false };\r\n  }\r\n\r\n  return { isSuccess: true, totalRecords: total };\r\n}\r\n\r\n// Called once per page.\r\nexport function execute(input) {\r\n  var invalid = missingEndpoint(input);\r\n  if (invalid) {\r\n    return invalid;\r\n  }\r\n\r\n  var pageNumber = input.paging.pageNumber;\r\n  var pageSize = input.paging.pageSize;\r\n  var start = (pageNumber - 1) * pageSize;\r\n\r\n  var result = get(pageUrl(input, start, pageSize));\r\n  if (result.failure) {\r\n    return result.failure;\r\n  }\r\n\r\n  var items = null;\r\n  try {\r\n    items = JSON.parse(result.response.body);\r\n  } catch (e) {\r\n    return { isSuccess: false, error: \"Failed to parse response\", shouldRetry: false };\r\n  }\r\n\r\n  if (!Array.isArray(items)) {\r\n    return { isSuccess: false, error: \"Expected a JSON array from \" + input.EndpointUrl, shouldRetry: false };\r\n  }\r\n\r\n  var records = [];\r\n  for (var i = 0; i < items.length; i++) {\r\n    var item = items[i];\r\n    records.push({\r\n      Code: item.id != null ? String(item.id) : null,\r\n      Name: item.name || null,\r\n      Email: item.email || null\r\n    });\r\n  }\r\n\r\n  return { isSuccess: true, records: records };\r\n}\r\n"
+      },
+      "Id": "743f4b80-18a0-4b47-9d1a-3c46f2f9b5dc",
+      "Code": "743f4b80-18a0-4b47-9d1a-3c46f2f9b5dc",
+      "Name": "REST Paginated Import Script"
+    }
+  ],
+  "serviceProviderRecord": {
+    "Configuration": {
+      "workerQueueOptions": {
+        "workerCount": 2,
+        "priorityQueueThreshold": {
+          "maxJobCount": 1,
+          "maxRecordCount": 5000
+        }
+      },
+      "services": {
+        "RestPagedImport": {
+          "name": "REST Paginated Import",
+          "description": "Imports every record from a paged REST endpoint (defaults to the https://jsonplaceholder.typicode.com/comments test API), one page per job",
+          "integrationFlow": "Import",
+          "isPaging": true,
+          "inputs": {
+            "Settings": {
+              "scope": "Service",
+              "friendlyName": "Settings",
+              "presenterConfiguration": {
+                "type": "ParameterSet",
+                "settings": {
+                  "Parameters": {
+                    "EndpointUrl": "EndpointUrl"
+                  }
+                }
+              }
+            },
+            "EndpointUrl": {
+              "type": "String",
+              "scope": "Service",
+              "friendlyName": "Endpoint URL",
+              "presenterConfiguration": {
+                "type": "String",
+                "settings": {}
+              },
+              "isRequired": true,
+              "isReadOnly": false,
+              "defaultValue": {
+                "name": "EndpointUrl",
+                "dataType": "String",
+                "assignmentType": "Literal",
+                "value": "https://jsonplaceholder.typicode.com/comments"
+              }
+            }
+          },
+          "outputs": {
+            "Code": {
+              "name": "Code",
+              "type": "String"
+            },
+            "Name": {
+              "name": "Name",
+              "type": "String"
+            },
+            "Email": {
+              "name": "Email",
+              "type": "String"
+            }
+          },
+          "maximumRecordsPerRequest": 100,
+          "scriptId": "743f4b80-18a0-4b47-9d1a-3c46f2f9b5dc"
+        }
+      }
+    },
+    "Id": "c63b7f3f-82be-4a60-bd2b-87ca56510978",
+    "Code": "c63b7f3f-82be-4a60-bd2b-87ca56510978",
+    "Name": "Script Paginated Import Example",
+    "Type": "Script"
+  }
+}
